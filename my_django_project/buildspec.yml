@@ -1,0 +1,34 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      - echo "Prepare local env"
+      # do something 
+  build:
+    commands:
+      - echo "Build and start Docker container"
+      - docker-compose up --build -d
+
+  post_build:
+    commands:
+      - echo "Stop Docker container"
+      - docker-compose stop
+      - echo "Start Docker container"
+      - docker-compose up -d
+      - echo "Initialize DB"
+      - docker exec gunicorn python manage.py makemigrations
+      - docker exec gunicorn python manage.py migrate
+      - echo "Run Django tests"
+      # run your test scripts
+      - echo "Building the Docker image..."
+      - docker tag example_django_container:latest $ECR_DJANGO_REPO_URI:latest
+      - echo "Push the Docker image to ECR"
+      - docker push $ECR_DJANGO_REPO_URI:latest
+      - printf '[{"name":"%s","imageUri":"%s"}]' $DJANGO_CONTAINER_NAME $ECR_DJANGO_REPO_URI:latest > imagedefinitions.json
+      - pwd; ls -al; cat imagedefinitions.json
+
+artifacts:
+    files:
+      - imagedefinitions.json
